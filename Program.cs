@@ -117,7 +117,7 @@ internal class Program
                 time += timer.minOrExact;
                 Regex regex = new Regex(Regex.Escape("<timer>"));
                 instructions = regex.Replace(instructions, 
-                    $"{timer.minOrExact} -{(timer.max is null ? " " : timer.max.ToString())}min", 1);
+                    $"{timer.minOrExact}{(timer.max is null ? "" : " - " + timer.max.ToString())} min", 1);
             }
 
 
