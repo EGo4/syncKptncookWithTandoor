@@ -26,7 +26,13 @@ internal class Program
         string password = Console.ReadLine();
         Console.WriteLine("Enter Tandor server URL:");
         string url = Console.ReadLine();
-        Console.WriteLine("Enter Tandor Token:");
+        Console.WriteLine("Enter Tandor username:");
+        string tandorUser = Console.ReadLine();
+        Console.WriteLine("Enter Tandor password:");
+        string tandorPassword = Console.ReadLine();
+
+        Console.WriteLine("Login to Tandor.");        
+        
         string apiKey = $"Bearer {Console.ReadLine()}";
 
         Console.WriteLine("Login to KptnCook.");
@@ -63,12 +69,22 @@ internal class Program
 
     }
 
-    private static ApiApi getTandorApi(string apiKey, string url)
+    private static async Task<string> getApiKey(string url, string user, string pw)
+    {
+        ApiApi tandorApi = getTandorApi(null, url);
+        tandorApi.CreateAuthToken
+    }
+
+    private static ApiApi getTandorApi(string? apiKey, string url)
     {
         Configuration configuration = new Configuration();
-        IDictionary<string, string> dict = new Dictionary<string, string>();
-        dict.Add("Authorization", apiKey);
-        configuration.DefaultHeader = dict;
+        if(apiKey != null)
+        {
+            IDictionary<string, string> dict = new Dictionary<string, string>();
+            dict.Add("Authorization", apiKey);
+            configuration.DefaultHeader = dict;
+        }
+
         configuration.BasePath = url;
         return new ApiApi(configuration);
     }
