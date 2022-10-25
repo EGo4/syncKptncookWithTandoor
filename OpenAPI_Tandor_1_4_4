@@ -1,7 +1,7 @@
 openapi: 3.0.2
 info:
   title: Django Recipes
-  version: 1.3.3
+  version: 1.4.4
 paths:
   /api/reset-food-inheritance/:
     get:
@@ -4724,6 +4724,141 @@ paths:
           description: ''
       tags:
       - api
+  /api/access-token/:
+    get:
+      operationId: listAccessTokens
+      description: ''
+      parameters: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccessToken'
+          description: ''
+      tags:
+      - api
+    post:
+      operationId: createAccessToken
+      description: ''
+      parameters: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+          description: ''
+      tags:
+      - api
+  /api/access-token/{id}/:
+    get:
+      operationId: retrieveAccessToken
+      description: ''
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: A unique integer value identifying this access token.
+        schema:
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+          description: ''
+      tags:
+      - api
+    put:
+      operationId: updateAccessToken
+      description: ''
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: A unique integer value identifying this access token.
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+          description: ''
+      tags:
+      - api
+    patch:
+      operationId: partialUpdateAccessToken
+      description: ''
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: A unique integer value identifying this access token.
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AccessToken'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+          description: ''
+      tags:
+      - api
+    delete:
+      operationId: destroyAccessToken
+      description: ''
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: A unique integer value identifying this access token.
+        schema:
+          type: string
+      responses:
+        '204':
+          description: ''
+      tags:
+      - api
   /api/import/:
     post:
       operationId: createimport_files
@@ -5759,10 +5894,11 @@ components:
               maxLength: 32
             rating:
               type: string
-              readOnly: true
+              nullable: true
             last_cooked:
               type: string
-              readOnly: true
+              format: date-time
+              nullable: true
             new:
               type: string
               readOnly: true
@@ -5937,10 +6073,11 @@ components:
           maxLength: 32
         rating:
           type: string
-          readOnly: true
+          nullable: true
         last_cooked:
           type: string
-          readOnly: true
+          format: date-time
+          nullable: true
         new:
           type: string
           readOnly: true
@@ -6293,9 +6430,12 @@ components:
         rating:
           type: string
           readOnly: true
+          nullable: true
         last_cooked:
           type: string
+          format: date-time
           readOnly: true
+          nullable: true
         private:
           type: boolean
         shared:
@@ -7104,6 +7244,7 @@ components:
               readOnly: true
           required:
           - name
+          nullable: true
       required:
       - food_inherit
     Step:
@@ -7781,6 +7922,30 @@ components:
           readOnly: true
       required:
       - recipe
+    AccessToken:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        token:
+          type: string
+          readOnly: true
+        expires:
+          type: string
+          format: date-time
+        scope:
+          type: string
+        created:
+          type: string
+          format: date-time
+          readOnly: true
+        updated:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - expires
     AuthToken:
       type: object
       properties:
