@@ -21,19 +21,18 @@ internal class Program
     private static async Task Main(string[] args)
     {
         Console.WriteLine("Enter KptnCook email:");
-        string username = Console.ReadLine();
+        string username = Console.ReadLine() ?? "";
         Console.WriteLine("Enter password:");
-        string password = Console.ReadLine();
+        string password = Console.ReadLine() ?? "";
         Console.WriteLine("Enter Tandor server URL:");
-        string url = Console.ReadLine();
+        string url = Console.ReadLine() ?? "";
         Console.WriteLine("Enter Tandor username:");
-        string tandorUser = Console.ReadLine();
+        string tandorUser = Console.ReadLine() ?? "";
         Console.WriteLine("Enter Tandor password:");
-        string tandorPassword = Console.ReadLine();
+        string tandorPassword = Console.ReadLine() ?? "";
 
         Console.WriteLine("Login to Tandor.");        
-        
-        string apiKey = $"Bearer {Console.ReadLine()}";
+        string apiKey = $"Bearer {getApiKey(url, tandorUser, tandorPassword)}";
 
         Console.WriteLine("Login to KptnCook.");
         string[] favorites = await login(username, password);
@@ -69,22 +68,21 @@ internal class Program
 
     }
 
-    private static async Task<string> getApiKey(string url, string user, string pw)
-    {
-        ApiApi tandorApi = getTandorApi(null, url);
-        tandorApi.CreateAuthToken
-    }
-
-    private static ApiApi getTandorApi(string? apiKey, string url)
+    private static string getApiKey(string url, string user, string pw)
     {
         Configuration configuration = new Configuration();
-        if(apiKey != null)
-        {
-            IDictionary<string, string> dict = new Dictionary<string, string>();
-            dict.Add("Authorization", apiKey);
-            configuration.DefaultHeader = dict;
-        }
+        configuration.BasePath = url;
+        ApiTokenAuthApi tandorAuthApi = new ApiTokenAuthApi(configuration); 
+        AccessToken accessToken = tandorAuthApi.CreateAuthToken(user, pw);
+        return accessToken.Token;
+    }
 
+    private static ApiApi getTandorApi(string apiKey, string url)
+    {
+        Configuration configuration = new Configuration();
+        IDictionary<string, string> dict = new Dictionary<string, string>();
+        dict.Add("Authorization", apiKey);
+        configuration.DefaultHeader = dict;
         configuration.BasePath = url;
         return new ApiApi(configuration);
     }
