@@ -34853,7 +34853,7 @@ namespace fetchkptncook.Client
                     }
                 }
             }
-            LogRequest(request);
+            //LogRequest(request);
             return request;
         }
 
@@ -46961,7 +46961,7 @@ namespace fetchkptncook.Model
         /// </summary>
         /// <param name="image">image.</param>
         /// <param name="imageUrl">imageUrl.</param>
-        public RecipeImage(System.IO.Stream image = default(System.IO.Stream), string imageUrl = default(string))
+        public RecipeImage(string image = default(string), string imageUrl = default(string))
         {
             this.Image = image;
             this.ImageUrl = imageUrl;
@@ -46970,7 +46970,7 @@ namespace fetchkptncook.Model
         /// Gets or Sets Image
         /// </summary>
         [DataMember(Name = "image", EmitDefaultValue = true)]
-        public System.IO.Stream Image { get; set; }
+        public string Image { get; set; }
         /// <summary>
         /// Gets or Sets ImageUrl
         /// </summary>
@@ -47679,7 +47679,7 @@ namespace fetchkptncook.Model
         /// Gets or Sets Image
         /// </summary>
         [DataMember(Name = "image", EmitDefaultValue = true)]
-        public System.IO.Stream Image { get; private set; }
+        public string Image { get; private set; }
         /// <summary>
         /// Returns false as Image should not be serialized given that it's read-only.
         /// </summary>
@@ -49023,7 +49023,7 @@ namespace fetchkptncook.Model
         /// Gets or Sets UsedInRecipes
         /// </summary>
         [DataMember(Name = "used_in_recipes", EmitDefaultValue = true)]
-        public string UsedInRecipes { get; private set; }
+        public List<UsedRecipe> UsedInRecipes { get; private set; }
         /// <summary>
         /// Returns false as UsedInRecipes should not be serialized given that it's read-only.
         /// </summary>
@@ -53989,7 +53989,7 @@ namespace fetchkptncook.Model
         /// <summary>
         /// Gets or Sets File
         /// </summary>
-        [DataMember(Name = "file", IsRequired = true, EmitDefaultValue = true)]
+        [DataMember(Name = "file", IsRequired = false, EmitDefaultValue = true)]
         public System.IO.Stream File { get; set; }
         /// <summary>
         /// Gets or Sets FileDownload

@@ -39,13 +39,20 @@ internal class Program
 
         Console.WriteLine("Fetching recipes from KptnCook.");
         List<Root> recipes = new List<Root>();
-        foreach(string favoId in favorites)
-            recipes.Add(await getRecipe(favoId));
+        List<Task<Root>> tasks = new List<Task<Root>>();
+        foreach (string favoId in favorites)
+            tasks.Add(getRecipe(favoId));
+
+        recipes = (await Task.WhenAll(tasks.ToArray())).ToList();
 
         Console.WriteLine($"Found {recipes.Count} recipes. Comparing with Tandor.");
+        List<Task<bool>> existingRecipesTask = new List<Task<bool>>();
+        recipes.ForEach(recipe => existingRecipesTask.Add(checkRecipeExists(recipe, apiKey, url)));
+        List<bool> existingRecipes = (await Task.WhenAll(existingRecipesTask.ToArray())).ToList();
+        
         int indexRecipe = 0;
-        while(indexRecipe < recipes.Count)
-            if (await checkRecipeExists(recipes[indexRecipe], apiKey, url))
+        foreach(bool existingRecipe in existingRecipes)
+            if (existingRecipe)
                 recipes.RemoveAt(indexRecipe);
             else
                 indexRecipe++;

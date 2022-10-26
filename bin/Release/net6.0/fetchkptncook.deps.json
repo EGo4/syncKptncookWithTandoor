@@ -8,11 +8,11 @@
     ".NETCoreApp,Version=v6.0": {
       "fetchkptncook/1.0.0": {
         "dependencies": {
-          "JsonSubTypes": "1.8.0",
+          "JsonSubTypes": "1.9.0",
           "NPOI": "2.5.6",
           "Newtonsoft.Json": "13.0.1",
           "Polly": "7.2.3",
-          "RestSharp": "106.12.0",
+          "RestSharp": "108.0.2",
           "System.ComponentModel.Annotations": "5.0.0",
           "System.Net.Http": "4.3.4"
         },
@@ -20,14 +20,14 @@
           "fetchkptncook.dll": {}
         }
       },
-      "JsonSubTypes/1.8.0": {
+      "JsonSubTypes/1.9.0": {
         "dependencies": {
           "Newtonsoft.Json": "13.0.1"
         },
         "runtime": {
           "lib/netstandard2.0/JsonSubTypes.dll": {
-            "assemblyVersion": "1.8.0.0",
-            "fileVersion": "1.8.0.0"
+            "assemblyVersion": "1.9.0.0",
+            "fileVersion": "1.9.0.0"
           }
         }
       },
@@ -102,11 +102,11 @@
           }
         }
       },
-      "RestSharp/106.12.0": {
+      "RestSharp/108.0.2": {
         "runtime": {
-          "lib/netstandard2.0/RestSharp.dll": {
-            "assemblyVersion": "106.12.0.0",
-            "fileVersion": "106.12.0.0"
+          "lib/net6.0/RestSharp.dll": {
+            "assemblyVersion": "108.0.2.0",
+            "fileVersion": "108.0.2.0"
           }
         }
       },
@@ -593,12 +593,12 @@
       "serviceable": false,
       "sha512": ""
     },
-    "JsonSubTypes/1.8.0": {
+    "JsonSubTypes/1.9.0": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-pBChxyl9mt0F1s1giHlN6yQ9WWb5FljluCNhMnSb7sspPfPRPTrc0a0psdu2/FVb5nZu5bQN50OMMaSp8jm8xQ==",
-      "path": "jsonsubtypes/1.8.0",
-      "hashPath": "jsonsubtypes.1.8.0.nupkg.sha512"
+      "sha512": "sha512-b7BHm3Oo5mqcIUWogcUsjOya9PmkNyLmwWtRfeCHwgGGXMGEFiz95ZxqfZQPXqxJRFr+2IxoiIcDv10tWUmvTQ==",
+      "path": "jsonsubtypes/1.9.0",
+      "hashPath": "jsonsubtypes.1.9.0.nupkg.sha512"
     },
     "Microsoft.NETCore.Platforms/2.0.0": {
       "type": "package",
@@ -649,12 +649,12 @@
       "path": "portable.bouncycastle/1.8.9",
       "hashPath": "portable.bouncycastle.1.8.9.nupkg.sha512"
     },
-    "RestSharp/106.12.0": {
+    "RestSharp/108.0.2": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-irOsQHe5nTJB0BKxGQnTX1dsgCPl5dLTxvL7gbl98JiFPiHMN4wpFyUG/66ZpaFCsIrPKh6XwozWXlwYe9JwYQ==",
-      "path": "restsharp/106.12.0",
-      "hashPath": "restsharp.106.12.0.nupkg.sha512"
+      "sha512": "sha512-zI1lzI+Jjzl6bcicyUYfLIGmmOAdJRkYepMnSPzrxd1o9RxztPaR/blUOmY8BpXdN3I+XlK9dtwCYRGCxvaODw==",
+      "path": "restsharp/108.0.2",
+      "hashPath": "restsharp.108.0.2.nupkg.sha512"
     },
     "runtime.debian.8-x64.runtime.native.System.Security.Cryptography.OpenSsl/4.3.2": {
       "type": "package",
