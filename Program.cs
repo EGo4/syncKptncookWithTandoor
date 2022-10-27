@@ -15,11 +15,17 @@ using NPOI.POIFS.Crypt.Dsig;
 using System.IO;
 using System;
 using System.Text.RegularExpressions;
+using NPOI.POIFS.Crypt;
+using System.Security.Policy;
 
 internal class Program
 {
     private static async Task Main(string[] args)
     {
+        // Static variables
+        const string identifier = "KptnCook";
+
+        // User input
         Console.WriteLine("Enter KptnCook email:");
         string username = Console.ReadLine() ?? "";
         Console.WriteLine("Enter password:");
@@ -30,21 +36,38 @@ internal class Program
         string tandorUser = Console.ReadLine() ?? "";
         Console.WriteLine("Enter Tandor password:");
         string tandorPassword = Console.ReadLine() ?? "";
+        Console.WriteLine("Do you want to import keywords from KptnCook (Y/N)");
+        bool uploadKeywords = string.Compare(Console.ReadLine(), "Y") == 0 ? true : false;
+        Console.WriteLine("Do you want to delete your removed recipes that where added with this account? (CAUTION: THIS IS UNTESTED) (Y/N)");
+        bool deleteRecipes = string.Compare(Console.ReadLine(), "Y") == 0 ? true : false;
 
+        // Login to Apis
         Console.WriteLine("Login to Tandor.");        
         string apiKey = $"Bearer {getApiKey(url, tandorUser, tandorPassword)}";
 
         Console.WriteLine("Login to KptnCook.");
         string[] favorites = await login(username, password);
 
+        // get all the recipes
         Console.WriteLine("Fetching recipes from KptnCook.");
         List<Root> recipes = new List<Root>();
         List<Task<Root>> tasks = new List<Task<Root>>();
         foreach (string favoId in favorites)
             tasks.Add(getRecipe(favoId));
 
-        recipes = (await Task.WhenAll(tasks.ToArray())).ToList();
+        recipes = (await Task.WhenAll(tasks.ToArray())).ToList();            
+        
+        // Check for deleted recipes
+        if (deleteRecipes)
+        {
+            Console.WriteLine("Check for deleted recipes by comparing Tandor and KptnCook.");
+            List<int> ids = await getIdsOfTandorRecipes(apiKey, url);
+            List<string> sourceUrls = await getSourceurlOfTandorRecipes(ids, apiKey, url);
+            List<int> deletableIds = getDeletableRecipeIds(ids, sourceUrls, recipes, identifier, username);
+            deleteRecipesBasedOnId(deletableIds, apiKey, url);
+        }
 
+        // Process existing recipes
         Console.WriteLine($"Found {recipes.Count} recipes. Comparing with Tandor.");
         List<Task<bool>> existingRecipesTask = new List<Task<bool>>();
         recipes.ForEach(recipe => existingRecipesTask.Add(checkRecipeExists(recipe, apiKey, url)));
@@ -58,21 +81,17 @@ internal class Program
                 indexRecipe++;
 
         Console.WriteLine($"Found {recipes.Count} new recipes.");
-
+        
+        // Upload new recipes
         if (recipes.Count != 0)
         {
             Console.Write("Processing recipes, this may take a while: ");
-            int iUpload = 0;
-            foreach (Root recipe in recipes)
-            {
-                await importRecipe(recipe, apiKey, url);
-                iUpload++;
-                if (Math.Floor(20.0 * iUpload / recipes.Count) > Math.Floor(20.0 * (iUpload - 1) / recipes.Count))
-                    Console.Write("█");
-            }               
+
+            List<Task> uploadTasks = new List<Task>();
+            recipes.ForEach(recipe => uploadTasks.Add(importRecipe(recipe, apiKey, url, uploadKeywords, identifier, username)));
+            Task.WaitAll(uploadTasks.ToArray());
         }
         Console.WriteLine("Done syncronising KptnCook with Tandor.");
-
     }
 
     private static string getApiKey(string url, string user, string pw)
@@ -94,23 +113,77 @@ internal class Program
         return new ApiApi(configuration);
     }
 
+    private static async Task<List<int>> getIdsOfTandorRecipes(string apiKey, string url)
+    {
+        ApiApi tandorApi = getTandorApi(apiKey, url);
+        // get list of existing recipes
+        ListRecipes200Response? response = await tandorApi.ListRecipesAsync();
+        return response.Results.Select(result => result.Id).ToList();
+    }
+
+    private static async Task<List<string>> getSourceurlOfTandorRecipes(List<int> ids, string apiKey, string url)
+    {
+        ApiApi tandorApi = getTandorApi(apiKey, url);
+        List<Task<Recipe>> tasks = new List<Task<Recipe>>();
+        ids.ForEach(id => tasks.Add(tandorApi.RetrieveRecipeAsync(id.ToString())));
+        List<Recipe> recipes = (await Task.WhenAll(tasks.ToArray())).ToList();
+        return recipes.Select(recipe => recipe.SourceUrl).ToList();
+    }
+
+    private static List<int> getDeletableRecipeIds(List<int> ids, List<string> sourceUrls, List<Root> recipes, string identificationString, string kptnCookEmail)
+    {
+        List<int> idsToDelete = new List<int>();
+        int i = 0;
+        while(i < ids.Count())
+        {
+            if (sourceUrls[i] is null)
+            {
+                ++i;
+                continue;
+            }
+                
+
+            string[] splittedUrl = sourceUrls[i].Split(" ");
+
+            if (splittedUrl != null
+                    && splittedUrl.Length == 2
+                    && string.Compare(splittedUrl[0], identificationString, StringComparison.Ordinal) == 0
+                    && string.Compare(splittedUrl[1], kptnCookEmail, StringComparison.Ordinal) == 0)
+                idsToDelete.Add(ids[i]);
+
+            ++i;
+        }
+
+        return idsToDelete;
+    }
+
+    private static void deleteRecipesBasedOnId(List<int> idsToDelete, string apiKey, string url)
+    {
+        ApiApi tandorApi = getTandorApi(apiKey, url);
+        List<Task> tasks = new List<Task>();
+        idsToDelete.ForEach(async id => await tandorApi.DestroyRecipeAsync(id.ToString()));
+        Task.WaitAll(tasks.ToArray());        
+    }
+
     private static async Task<bool> checkRecipeExists(Root recipe, string apiKey, string url)
     {
         ApiApi tandorApi = getTandorApi(apiKey, url);
         // get list of existing recipes
-        List<RecipeOverview> recipesTandor = tandorApi.ListRecipes().Results ?? new List<RecipeOverview>();
+        ListRecipes200Response? response = await tandorApi.ListRecipesAsync();
+        List<RecipeOverview> recipesTandor = response is null ? new List<RecipeOverview>() : response.Results;
         // check if recipe is in existing recipes
-        return recipesTandor.Any(recipeTandor => recipeTandor.Name == recipe.title);
+        return recipesTandor.Any(recipeTandor => recipeTandor.Name == recipe.title); 
     }
 
-    private static async Task importRecipe(Root recipe, string api_key, string url)
+    private static async Task importRecipe(Root recipe, string api_key, string url, bool uploadKeywords, string identifier, string kptncookUser)
     {
         ApiApi tandorApi = getTandorApi(api_key, url);
         // components of the tandor recipe
         string name = recipe.title;
         string description = recipe.authorComment;
         List<RecipeKeywordsInner> keywords = new List<RecipeKeywordsInner>();
-        recipe.activeTags.ForEach(tag => keywords.Add(new RecipeKeywordsInner(tag, null, "")));
+        if (uploadKeywords)
+            recipe.activeTags.ForEach(tag => keywords.Add(new RecipeKeywordsInner(tag, null, "")));
         bool _internal = true;
         
         fetchkptncook.Model.RecipeNutrition recipeNutrition = new fetchkptncook.Model.RecipeNutrition(
@@ -200,7 +273,7 @@ internal class Program
             i++;
         }
 
-        Recipe tandorRecipe = new Recipe(name, description, keywords, steps, workingTime, waitingTime, null, _internal, true,
+        Recipe tandorRecipe = new Recipe(name, description, keywords, steps, workingTime, waitingTime, $"{identifier} {kptncookUser}", _internal, true,
             recipeNutrition, servings, filePath, "", false, new List<CustomFilterSharedInner>());
         // line 137
         Recipe responseTandor = await tandorApi.CreateRecipeAsync(tandorRecipe);

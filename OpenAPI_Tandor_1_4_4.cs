@@ -45012,7 +45012,7 @@ namespace fetchkptncook.Model
         /// Gets or Sets Image
         /// </summary>
         [DataMember(Name = "image", EmitDefaultValue = true)]
-        public System.IO.Stream Image { get; private set; }
+        public string Image { get; private set; }
         /// <summary>
         /// Returns false as Image should not be serialized given that it's read-only.
         /// </summary>
@@ -45866,7 +45866,7 @@ namespace fetchkptncook.Model
         /// Gets or Sets Image
         /// </summary>
         [DataMember(Name = "image", EmitDefaultValue = true)]
-        public System.IO.Stream Image { get; private set; }
+        public string Image { get; private set; }
         /// <summary>
         /// Returns false as Image should not be serialized given that it's read-only.
         /// </summary>
