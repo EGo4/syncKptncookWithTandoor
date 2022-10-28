@@ -69,13 +69,12 @@ internal class Program
 
         // Process existing recipes
         Console.WriteLine($"Found {recipes.Count} recipes. Comparing with Tandor.");
-        List<Task<bool>> existingRecipesTask = new List<Task<bool>>();
-        recipes.ForEach(recipe => existingRecipesTask.Add(checkRecipeExists(recipe, apiKey, url)));
-        List<bool> existingRecipes = (await Task.WhenAll(existingRecipesTask.ToArray())).ToList();
-        
+
         int indexRecipe = 0;
-        foreach(bool existingRecipe in existingRecipes)
-            if (existingRecipe)
+        List<RecipeOverview> currentTandorRecipes = await getRecipeOverview(apiKey, url);
+        while(indexRecipe < recipes.Count())
+            if (currentTandorRecipes.Any(
+                    recipeTandor => recipeTandor.Name == recipes[indexRecipe].title))
                 recipes.RemoveAt(indexRecipe);
             else
                 indexRecipe++;
@@ -165,14 +164,22 @@ internal class Program
         Task.WaitAll(tasks.ToArray());        
     }
 
-    private static async Task<bool> checkRecipeExists(Root recipe, string apiKey, string url)
+    private static async Task<List<RecipeOverview>> getRecipeOverview(string apiKey, string url)
     {
         ApiApi tandorApi = getTandorApi(apiKey, url);
-        // get list of existing recipes
-        ListRecipes200Response? response = await tandorApi.ListRecipesAsync();
-        List<RecipeOverview> recipesTandor = response is null ? new List<RecipeOverview>() : response.Results;
-        // check if recipe is in existing recipes
-        return recipesTandor.Any(recipeTandor => recipeTandor.Name == recipe.title); 
+        List<RecipeOverview> recipesTandor = new List<RecipeOverview>();
+        ListRecipes200Response response = new ListRecipes200Response();
+        // get list of existing recipes (maximum page size is 100)
+        int page = 1;
+        do
+        {
+            response = await tandorApi.ListRecipesAsync(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, page, 100);
+            response.Results.ForEach(result => recipesTandor.Add(result));
+            page++;
+        } while (response.Next != null);
+        return recipesTandor; 
     }
 
     private static async Task importRecipe(Root recipe, string api_key, string url, bool uploadKeywords, string identifier, string kptncookUser)
