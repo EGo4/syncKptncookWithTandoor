@@ -282,7 +282,7 @@ internal class Program
                                     // line 115,´120, 121
                                     new FoodSupermarketCategory(ingredient.unit.metricMeasure) : null : null,
                                 // 114 and 118 and 123
-                                ingredient.unit != null ? ingredient.unit.metricQuantity.ToString() : ingredient.quantity != null ? ingredient.metricQuantity.ToString() : "",
+                                (ingredient.unit != null ? ingredient.unit.metricQuantity.ToString() : ingredient.quantity != null ? ingredient.metricQuantity.ToString() : "").Replace(",","."),
                                 "",
                                 orderIng,
                                 false,
