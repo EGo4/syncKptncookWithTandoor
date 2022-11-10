@@ -108,5 +108,24 @@ public class KptnToTandorConverter
 
         return new RecipeStepsInnerIngredientsInner(food, unit, amount, "", orderIng, false, noAmount, null);
     }
+
+    public Recipe kptnRecipeToTandorRecipeWithoutSteps(Root recipe, bool uploadKeywords, string identifier, string kptncookUser)
+    {
+        // components of the tandor recipe
+        string name = recipe.title;
+        string description = recipe.authorComment;
+        List<RecipeKeywordsInner> keywords = uploadKeywords ? this.kptnKeywordsToTandorKeywords(recipe.activeTags) : new List<RecipeKeywordsInner>();
+        bool _internal = true;
+        fetchkptncook.Model.RecipeNutrition recipeNutrition = this.kptnNutritionToTandorNutrition(recipe.recipeNutrition);
+        int workingTime = recipe.preparationTime;
+        int waitingTime = recipe.cookingTime ?? 0;
+        int servings = 1;
+        string filePath = "";
+
+        List<RecipeStepsInner> steps = new List<RecipeStepsInner>();
+
+        return new Recipe(name, description, keywords, steps, workingTime, waitingTime, $"{identifier} {kptncookUser}", _internal, true,
+            recipeNutrition, servings, filePath, "", false, new List<CustomFilterSharedInner>());
+    }
 }
 

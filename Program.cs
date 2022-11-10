@@ -110,33 +110,18 @@ internal class Program
         Console.WriteLine("Done syncronising KptnCook with Tandor.");
     }
 
-    private static async Task<(Exception?, bool)> importRecipe(Root recipe, string api_key, string url, bool uploadKeywords, string identifier, string kptncookUser)
+    private static async Task<(Exception?, bool)> importRecipe(Root recipe, TandorCommunicationService tandorCommunicationService, bool uploadKeywords, string identifier, string kptncookUser)
     {
         try
         {
             KptnToTandorConverter converter = new KptnToTandorConverter();
-            ApiApi tandorApi = getTandorApi(api_key, url);
-            // components of the tandor recipe
-            string name = recipe.title;
-            string description = recipe.authorComment;
-            List<RecipeKeywordsInner> keywords = uploadKeywords ? converter.kptnKeywordsToTandorKeywords(recipe.activeTags) : new List<RecipeKeywordsInner>();
-            bool _internal = true;
-            fetchkptncook.Model.RecipeNutrition recipeNutrition = converter.kptnNutritionToTandorNutrition(recipe.recipeNutrition);
-            int workingTime = recipe.preparationTime;
-            int waitingTime = recipe.cookingTime ?? 0;
-            int servings = 1;
-            string filePath = "";
-
-            List<RecipeStepsInner> steps = new List<RecipeStepsInner>();
+            Recipe tandorRecipe = converter.kptnRecipeToTandorRecipeWithoutSteps(recipe, uploadKeywords, identifier, kptncookUser);
             int i = 0;
             foreach (Step thisStep in recipe.steps)
             {
-                steps.Add(converter.kptnStepToTandorStep(thisStep, i));
+                tandorRecipe.Steps.Add(converter.kptnStepToTandorStep(thisStep, i));
                 i++;
             }
-
-            Recipe tandorRecipe = new Recipe(name, description, keywords, steps, workingTime, waitingTime, $"{identifier} {kptncookUser}", _internal, true,
-                recipeNutrition, servings, filePath, "", false, new List<CustomFilterSharedInner>());
 
             Recipe responseTandor = await tandorApi.CreateRecipeAsync(tandorRecipe);
 
