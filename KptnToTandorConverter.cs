@@ -1,4 +1,5 @@
 ﻿using fetchkptncook.Model;
+using NPOI.SS.Formula.Functions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -54,22 +55,13 @@ public class KptnToTandorConverter
                 orderIng++;
             }
 
-        string imgUrl = step.image.url;
-        FileStream imgData = await getImage(imgUrl);
-        string[] imgName = System.IO.Path.GetFileName(imgData.Name).Split('.');
-
-        UserFile imageResponse = await tandorApi.CreateUserFileAsync(imgName[0], imgData);
-        imgData.Close();
-
-        // line 131
         return new RecipeStepsInner(
                 "",
                 instructions,
                 recipeStepsInnerIngredientsInners,
                 time,
                 order,
-                true,
-                imageResponse.ToRecipeStepsInnerFile()
+                true
         );
     }    
     
@@ -127,5 +119,91 @@ public class KptnToTandorConverter
         return new Recipe(name, description, keywords, steps, workingTime, waitingTime, $"{identifier} {kptncookUser}", _internal, true,
             recipeNutrition, servings, filePath, "", false, new List<CustomFilterSharedInner>());
     }
-}
+
+    public RecipeStepsInner? calculateIngredientsCompensationStep(
+        Step stepToModify, List<Step> recipeSteps, List<Ingredient> recipeIngredients, int stepOrder)
+    {
+        List<Ingredient> ingredientsInSteps = new List<Ingredient>();
+        // At first extract all ingredients from the steps.
+        // Therefore loop trough all the steps.
+        foreach(Step step in recipeSteps)
+        {   // Within a step iterate trough all the ingredients
+            foreach(Ingredient ingredient in step.ingredients)
+            {
+                
+                if (ingredientsInSteps.Any(ing => ingredient.title == ing.title))
+                {// If the ingredient allready exists it needs to be merged
+                    // Fetch the already existing ingredient incuding its index
+                    Ingredient ingredientToUpdate = ingredientsInSteps.Find(ing => ing.title == ingredient.title) ?? new Ingredient();
+                    int indexOfIngredientToUpdate = ingredientsInSteps.IndexOf(ingredientToUpdate);
+                    // Modify the ingredient based on the new one
+                    if (ingredientToUpdate.unit == ingredient.unit)
+                    {
+                        if (ingredient.unit is not null)
+                            ingredientToUpdate.unit.metricQuantity += ingredient.unit.metricQuantity;
+                        else if (ingredient.quantity is not null && ingredient.metricQuantity is not null)
+                            ingredientToUpdate.metricQuantity += ingredient.metricQuantity;
+                    }
+                    else
+                    {
+                        Console.WriteLine("Big oof, one of the recipes is really poorly defined " +
+                            "and cannot be merged correctly.");
+                    }
+
+                    // Update the ingredient
+                    ingredientsInSteps[indexOfIngredientToUpdate] = ingredientToUpdate;
+                }
+                else
+                {// If not, it needs to be added.
+                    ingredientsInSteps.Add(ingredient);
+                }                
+            }
+        }
+        // After fetching all the ingredients from the steps into one list, they can be compared
+        // to the overall ingredient list.
+        List<Ingredient> ingredientsToAdd = new List<Ingredient>();
+        foreach (Ingredient ingredient in recipeIngredients)
+        {
+            Ingredient currentIngredientFromSteps = ingredientsInSteps.Find(ing => ing.title == ingredient.title) ?? new Ingredient();
+            if (currentIngredientFromSteps.unit == ingredient.unit)
+            {
+                if (ingredient.unit is not null)
+                {
+                    if (ingredient.unit.metricQuantity != currentIngredientFromSteps.unit.metricQuantity)
+                    {
+                        currentIngredientFromSteps.unit.metricQuantity =
+                            ingredient.unit.metricQuantity
+                            - currentIngredientFromSteps.unit.metricQuantity;
+                        ingredientsToAdd.Add(currentIngredientFromSteps);
+                    }
+                }
+                else if (ingredient.quantity is not null && ingredient.metricQuantity is not null)
+                {
+                    if (ingredient.metricQuantity != currentIngredientFromSteps.metricQuantity)
+                    {
+                        currentIngredientFromSteps.metricQuantity =
+                            ingredient.metricQuantity
+                            - currentIngredientFromSteps.metricQuantity;
+                        ingredientsToAdd.Add(currentIngredientFromSteps);
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine("Big oof, one of the recipes is really poorly defined " +
+                    "and cannot be merged correctly.");
+            }
+        }
+
+        if (ingredientsToAdd.Count > 0)
+        {
+            ingredientsToAdd.ForEach(ing => stepToModify.ingredients.Add(ing));
+            return kptnStepToTandorStep(stepToModify, stepOrder);
+        }
+        else
+        {
+            return null;
+        }
+    }
+}       
 

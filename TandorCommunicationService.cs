@@ -1,6 +1,7 @@
 ﻿using fetchkptncook.Api;
 using fetchkptncook.Client;
 using fetchkptncook.Model;
+using NPOI.POIFS.Crypt.Dsig;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,15 +22,16 @@ namespace fetchkptncook
             url = _url;
             user = _user;
             password = _password;
-            apiKey = $"Bearer {getApiKey()}";
+            string key = getApiKey() ?? "";
+            apiKey = $"Bearer {key}";
         }
 
-        private string getApiKey()
+        private string? getApiKey()
         {
             Configuration configuration = new Configuration();
             configuration.BasePath = url;
             ApiTokenAuthApi tandorAuthApi = new ApiTokenAuthApi(configuration);
-            AccessToken accessToken = tandorAuthApi.CreateAuthToken(user, password);
+            AccessToken? accessToken = tandorAuthApi.CreateAuthToken(user, password);
             return accessToken.Token;
         }
 
@@ -131,6 +133,25 @@ namespace fetchkptncook
                 page++;
             } while (response.Next != null);
             return recipesTandor;
+        }
+
+        public async Task<Recipe> uploadRecipe(Recipe recipe)
+        {
+            ApiApi api = getTandorApi();
+            return await api.CreateRecipeAsync(recipe);
+        }
+
+        public async Task<UserFile> uploadImage(FileStream imgData)
+        {
+            ApiApi api = getTandorApi();
+            string[] imgName = System.IO.Path.GetFileName(imgData.Name).Split('.');
+            return await api.CreateUserFileAsync(imgName[0], imgData);
+        }
+
+        public async Task<RecipeImage> uploadCoverImage(string id, FileStream imgData)
+        {
+            ApiApi api = getTandorApi();
+            return await api.ImageRecipeAsync(id, imgData);
         }
     }
 }

@@ -8,11 +8,11 @@ using System.Threading.Tasks;
 
 public class loginResponse
 {
-        public string accessToken { get; set; }
-        public string name { get; set; }
-        public int favspace { get; set; }
-        public string[] favorites { get; set; }
-        public string inviteCode { get; set; }
+    public string accessToken { get; set; }
+    public string name { get; set; }
+    public int favspace { get; set; }
+    public string[] favorites { get; set; }
+    public string inviteCode { get; set; }
 }
 
 // Root myDeserializedClass = JsonConvert.DeserializeObject<List<Root>>(myJsonResponse);

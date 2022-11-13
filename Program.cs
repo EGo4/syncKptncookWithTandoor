@@ -103,48 +103,91 @@ internal class Program
         {
             Console.Write("Processing recipes, this may take a while.");
 
-            List<Task<(Exception?, bool)>> uploadTasks = new List<Task<(Exception?, bool)>>();
-            recipes.ForEach(recipe => uploadTasks.Add(importRecipe(recipe, uploadKeywords, identifier, username)));
-            List<(Exception?, bool)> uploadFeedback = (await Task.WhenAll(uploadTasks.ToArray())).ToList();
+            // Importing all the fetched recipes
+            List<Task<Exception?>> uploadTasks = new List<Task<Exception?>>();
+            recipes.ForEach(recipe => uploadTasks.Add(importRecipe(recipe,
+                tandorCommunicationService, kptnCookCommunicationService,
+                uploadKeywords, identifier, username)));
+            List<Exception?> uploadFeedback = (await Task.WhenAll(uploadTasks.ToArray())).ToList();
+            
+            // Extracting exceptions
+            List<(Exception, int)> exceptions = new List<(Exception, int)>();
+            for (int iException = 0; iException < uploadFeedback.Count; ++iException)
+                if (uploadFeedback[iException] is not null)
+                    exceptions.Add((uploadFeedback[iException] ?? new Exception(), iException));
+                    
+            
+            // Output information about exceptions
+            Console.WriteLine($"{recipes.Count - exceptions.Count} of {recipes.Count} recipes where successfully syncronised.");
+            if(exceptions.Count > 0) {
+                List<string> fileText = new List<string>();
+                exceptions.ForEach(exception =>
+                    {
+                        fileText.Add(exception.ToString());
+                        fileText.Add("");
+                    }
+                );
+                string fileName = DateTime.Now.ToString("yyyyMMdd\\_hmmtt") + "_exceptions.txt";
+                await File.WriteAllLinesAsync(fileName, fileText);
+                Console.WriteLine($"The exceptions where save to {fileName}.");
+            }
         }
         Console.WriteLine("Done syncronising KptnCook with Tandor.");
     }
 
-    private static async Task<(Exception?, bool)> importRecipe(Root recipe, TandorCommunicationService tandorCommunicationService, bool uploadKeywords, string identifier, string kptncookUser)
+    private static async Task<Exception?> importRecipe(Root recipe, 
+        TandorCommunicationService tandorCommunicationService, 
+        KptnCookCommunicationService kptnCookCommunicationService,
+        bool uploadKeywords, string identifier, string kptncookUser)
     {
         try
         {
             KptnToTandorConverter converter = new KptnToTandorConverter();
+            // Create the recipe based on the kptn cook recipe
             Recipe tandorRecipe = converter.kptnRecipeToTandorRecipeWithoutSteps(recipe, uploadKeywords, identifier, kptncookUser);
-            int i = 0;
+            // Add steps to the recipe
+            int iOrder = 1;
             foreach (Step thisStep in recipe.steps)
             {
-                tandorRecipe.Steps.Add(converter.kptnStepToTandorStep(thisStep, i));
-                i++;
-            }
-
-            Recipe responseTandor = await tandorApi.CreateRecipeAsync(tandorRecipe);
-
-            string? coverImgUrl = null;
-            foreach (ImageList img in recipe.imageList)
-                if (img.type == "cover")
-                {
-                    coverImgUrl = img.url;
-                    break;
-                }
-
-            if (coverImgUrl != null)
-            {
-                FileStream imgData = await getImage(coverImgUrl);
-                RecipeImage recipeImage = tandorApi.ImageRecipe(responseTandor.Id.ToString(), imgData);
+                // Convert KptnCook step to Tandor step
+                RecipeStepsInner stepToAdd = converter.kptnStepToTandorStep(thisStep, iOrder);
+                // Get the image from KptnCook
+                FileStream imgData = await kptnCookCommunicationService.getImage(thisStep.image.url); 
+                // Upload image to Tandor
+                UserFile imgResponse = await tandorCommunicationService.uploadImage(imgData);
                 imgData.Close();
+                // Add image to the step
+                stepToAdd.File = imgResponse.ToRecipeStepsInnerFile();
+                // Add step to the recipe
+                tandorRecipe.Steps.Add(stepToAdd);
+                iOrder++;
             }
-            // End = line 170
-            return (null, true);
+            // Check if the used ingredients isequal to the overall ingredients since KptnCook seperates
+            // them from each other and tandor only uses ingredients in steps and calculates the overall
+            // ingredients based on that.
+            RecipeStepsInner? ingredientStep = converter.calculateIngredientsCompensationStep(
+                recipe.steps.First(), recipe.steps, recipe.ingredients, 0);
+            if (ingredientStep is not null)
+                tandorRecipe.Steps = tandorRecipe.Steps.Prepend(ingredientStep).ToList();
+            // Upload the fully coverted recipe to tandor
+            Recipe responseTandor = await tandorCommunicationService.uploadRecipe(tandorRecipe);
+            // Get the cover image from kptn cook recipe
+            ImageList? coverImg = recipe.imageList.Find(img => img.type == "cover");
+            // Upload the cover image if it was found
+            if (coverImg != null)
+            {
+                // Fetch file data
+                FileStream coverImgData = await kptnCookCommunicationService.getImage(coverImg.url);
+                RecipeImage recipeImage = await tandorCommunicationService.uploadCoverImage(
+                    responseTandor.Id.ToString(), coverImgData);
+                coverImgData.Close();
+            }
+
+            return null;
         }
         catch(Exception ex)
         {
-            return (ex, false);
+            return ex;
         }
     }
 }
