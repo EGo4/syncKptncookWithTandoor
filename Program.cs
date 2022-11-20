@@ -27,6 +27,37 @@ internal class Program
         const int maximumTandorThreads = 10;
 
         // User input
+        (string kptnUsername, string kptnPassword, string tandorUrl, string tandorUser, string tandorPassword, bool uploadKeywords, 
+            bool deleteRecipes) = getUserInput();
+
+        // Login to Apis
+        (TandorCommunicationService tandorCommunicationService, KptnCookCommunicationService kptnCookCommunicationService) = 
+            await loginToServices(kptnUsername, kptnPassword, tandorUrl, tandorUser, tandorPassword);
+
+        // Get all the recipes from KptnCook
+        (List<Root> kptncookRecipes, List<RecipeOverview> currentTandorRecipes)  = await fetchRecipesFromServices(kptnCookCommunicationService,
+            tandorCommunicationService);
+
+        // Check for deleted recipes in kptn cook and delete them in tandor on request.
+        if (deleteRecipes)
+            currentTandorRecipes = await syncDeletedRecipes(tandorCommunicationService, kptncookRecipes, currentTandorRecipes, 
+                maximumTandorThreads, identifier, kptnUsername);
+
+        // Process existing recipes
+        kptncookRecipes = deleteExistingRecipes(kptncookRecipes, currentTandorRecipes);
+
+        // Upload new recipes
+        if (kptncookRecipes.Count != 0)
+            await uploadNewRecipes(tandorCommunicationService, kptnCookCommunicationService, kptncookRecipes,
+                uploadKeywords, identifier, kptnUsername);
+
+        Console.WriteLine("Done syncronising KptnCook with Tandor.");
+    }
+
+    // General functions to cluster programm tasks.
+    private static (string, string, string, string, string, bool, bool) getUserInput()
+    {
+        // User input
         Console.WriteLine("Enter KptnCook email:");
         string username = Console.ReadLine() ?? "";
         Console.WriteLine("Enter password:");
@@ -42,99 +73,114 @@ internal class Program
         Console.WriteLine("Do you want to delete your removed recipes that where added with this account? (CAUTION: THIS DOES NOT DELETE IMAGES) (Y/N)");
         bool deleteRecipes = string.Compare(Console.ReadLine(), "Y") == 0 ? true : false;
 
-        // Login to Apis
+        return (username, password, url, tandorUser, tandorPassword, uploadKeywords, deleteRecipes);
+    }
+
+    private static async Task<(TandorCommunicationService, KptnCookCommunicationService)> loginToServices(
+        string kptnUsername, string kptnPassword, string tandorUrl, string tandorUser, string tandorPassword)
+    {
         Console.WriteLine("Login to Tandor.");
-        TandorCommunicationService tandorCommunicationService = new TandorCommunicationService(url, tandorUser, tandorPassword);
+        TandorCommunicationService tandorCommunicationService = new TandorCommunicationService(tandorUrl, tandorUser, tandorPassword);
 
         Console.WriteLine("Login to KptnCook.");
-        KptnCookCommunicationService kptnCookCommunicationService = await KptnCookCommunicationService.BuildService(username, password);
+        KptnCookCommunicationService kptnCookCommunicationService = await KptnCookCommunicationService.BuildService(kptnUsername, kptnPassword);
+
+        return (tandorCommunicationService, kptnCookCommunicationService);
+    }
+
+    private static async Task<(List<Root>, List<RecipeOverview>)> fetchRecipesFromServices(
+        KptnCookCommunicationService kptnCookCommunicationService, TandorCommunicationService tandorCommunicationService)
+    {
         string[] favorites = kptnCookCommunicationService.favorites ?? new string[0];
-        
-        // get all the recipes from KptnCook
         Console.WriteLine("Fetching recipes from KptnCook.");
-        List<Root> recipes = new List<Root>();
         List<Task<Root>> tasks = new List<Task<Root>>();
         foreach (string favoId in favorites)
             tasks.Add(kptnCookCommunicationService.getRecipe(favoId));
 
-        recipes = (await Task.WhenAll(tasks.ToArray())).ToList();
-        Console.WriteLine($"Found {recipes.Count()} in your KptnCook account.");
-        
+        List<Root> kptncookRecipes = (await Task.WhenAll(tasks.ToArray())).ToList();
+        Console.WriteLine($"Found {kptncookRecipes.Count()} in your KptnCook account.");
+
         Console.WriteLine("Fetching recipes from Tandor.");
         List<RecipeOverview> currentTandorRecipes = await tandorCommunicationService.getRecipeOverview() ?? new List<RecipeOverview>();
         Console.WriteLine($"Found {currentTandorRecipes.Count()} in your Tandor account.");
 
-        // Check for deleted recipes
-        if (deleteRecipes)
-        {
-            Console.WriteLine("Check for recipes that can be deleted by comparing Tandor sourceUrls and KptnCook. This only works if your KptnCook recipes in Tandor where imported by this tool!");
-            List<int> ids = currentTandorRecipes.Select(tandorRecipe => tandorRecipe.Id).ToList();            
-            List<Recipe> tandorRecipes = await tandorCommunicationService.getTandorRecipes(ids, maximumTandorThreads);
-            
-            List<int> deletableIds = tandorCommunicationService.getDeletableRecipeIds(tandorRecipes, recipes, identifier, username);
-            Console.WriteLine($"Found {deletableIds.Count()} recipes that can be deleted. Do you want to delete them (Y/N)?");
-            if (deletableIds.Count() > 0 && string.Compare(Console.ReadLine(), "Y") == 0)
-            {
-                Console.WriteLine("Start deleting Recipes.");
-                tandorCommunicationService.deleteRecipesBasedOnId(deletableIds);
-                // Fetch recipes again
-                Console.WriteLine("Fetch recipes from Tandor again.");
-                currentTandorRecipes = await tandorCommunicationService.getRecipeOverview() ?? new List<RecipeOverview>();
-                Console.WriteLine($"Found {currentTandorRecipes.Count()} in your Tandor account.");
-
-            }
-
-        }
-
-        Console.WriteLine($"Check for recipes that already exist in Tandor.");
-        // Process existing recipes
-        int indexRecipe = 0;
-        while (indexRecipe < recipes.Count())
-            if (currentTandorRecipes.Any(
-                    recipeTandor => recipes[indexRecipe].title.Contains(recipeTandor.Name)))
-                recipes.RemoveAt(indexRecipe);
-            else
-                indexRecipe++;
-       
-        Console.WriteLine($"Found {recipes.Count} new recipes.");
-
-        // Upload new recipes
-        if (recipes.Count != 0)
-        {
-            Console.Write("Processing recipes, this may take a while.");
-
-            // Importing all the fetched recipes
-            List<Task<Exception?>> uploadTasks = new List<Task<Exception?>>();
-            recipes.ForEach(recipe => uploadTasks.Add(importRecipe(recipe,
-                tandorCommunicationService, kptnCookCommunicationService,
-                uploadKeywords, identifier, username)));
-            List<Exception?> uploadFeedback = (await Task.WhenAll(uploadTasks.ToArray())).ToList();
-            
-            // Extracting exceptions
-            List<(Exception, int)> exceptions = new List<(Exception, int)>();
-            for (int iException = 0; iException < uploadFeedback.Count; ++iException)
-                if (uploadFeedback[iException] is not null)
-                    exceptions.Add((uploadFeedback[iException] ?? new Exception(), iException));
-                    
-            
-            // Output information about exceptions
-            Console.WriteLine($"{recipes.Count - exceptions.Count} of {recipes.Count} recipes where successfully syncronised.");
-            if(exceptions.Count > 0) {
-                List<string> fileText = new List<string>();
-                exceptions.ForEach(exception =>
-                    {
-                        fileText.Add(exception.ToString());
-                        fileText.Add("");
-                    }
-                );
-                string fileName = DateTime.Now.ToString("yyyyMMdd\\_hmmtt") + "_exceptions.txt";
-                await File.WriteAllLinesAsync(fileName, fileText);
-                Console.WriteLine($"The exceptions where save to {fileName}.");
-            }
-        }
-        Console.WriteLine("Done syncronising KptnCook with Tandor.");
+        return (kptncookRecipes, currentTandorRecipes);
     }
 
+    private static async Task<List<RecipeOverview>> syncDeletedRecipes(TandorCommunicationService tandorCommunicationService, List<Root> kptncookRecipes, 
+        List<RecipeOverview> currentTandorRecipes, int maximumTandorThreads, string identifier, string kptnUsername)
+    {
+        Console.WriteLine("Check for recipes that can be deleted by comparing Tandor sourceUrls and KptnCook. This only works if your KptnCook recipes in Tandor where imported by this tool!");
+        List<int> ids = currentTandorRecipes.Select(tandorRecipe => tandorRecipe.Id).ToList();
+        List<Recipe> tandorRecipes = await tandorCommunicationService.getTandorRecipes(ids, maximumTandorThreads);
+
+        List<int> deletableIds = tandorCommunicationService.getDeletableRecipeIds(tandorRecipes, kptncookRecipes, identifier, kptnUsername);
+        Console.WriteLine($"Found {deletableIds.Count()} recipes that can be deleted. Do you want to delete them (Y/N)?");
+        if (deletableIds.Count() > 0 && string.Compare(Console.ReadLine(), "Y") == 0)
+        {
+            Console.WriteLine("Start deleting recipes.");
+            tandorCommunicationService.deleteRecipesBasedOnId(deletableIds);
+            // Fetch recipes again
+            Console.WriteLine("Fetch recipes from Tandor again.");
+            currentTandorRecipes = await tandorCommunicationService.getRecipeOverview() ?? new List<RecipeOverview>();
+            Console.WriteLine($"Found {currentTandorRecipes.Count()} in your Tandor account.");
+        }
+
+        return currentTandorRecipes;
+    }
+
+    private static List<Root> deleteExistingRecipes(List<Root> kptncookRecipes, List<RecipeOverview> currentTandorRecipes)
+    {
+        Console.WriteLine("Check for recipes that already exist in Tandor.");
+        int indexRecipe = 0;
+        while (indexRecipe < kptncookRecipes.Count())
+            if (currentTandorRecipes.Any(recipeTandor => kptncookRecipes[indexRecipe].title.Contains(recipeTandor.Name)))
+                kptncookRecipes.RemoveAt(indexRecipe);
+            else
+                indexRecipe++;
+
+        Console.WriteLine($"Found {kptncookRecipes.Count} new recipes.");
+
+        return kptncookRecipes;
+    }
+
+    private static async Task uploadNewRecipes(TandorCommunicationService tandorCommunicationService, KptnCookCommunicationService kptnCookCommunicationService,
+        List<Root> kptncookRecipes, bool uploadKeywords, string identifier, string kptnUsername)
+    {
+        Console.Write("Processing recipes, this may take a while.");
+
+        // Importing all the fetched recipes
+        List<Task<Exception?>> uploadTasks = new List<Task<Exception?>>();
+        kptncookRecipes.ForEach(recipe => uploadTasks.Add(importRecipe(recipe,
+            tandorCommunicationService, kptnCookCommunicationService,
+            uploadKeywords, identifier, kptnUsername)));
+        List<Exception?> uploadFeedback = (await Task.WhenAll(uploadTasks.ToArray())).ToList();
+
+        // Extracting exceptions
+        List<(Exception, int)> exceptions = new List<(Exception, int)>();
+        for (int iException = 0; iException < uploadFeedback.Count; ++iException)
+            if (uploadFeedback[iException] is not null)
+                exceptions.Add((uploadFeedback[iException] ?? new Exception(), iException));
+
+
+        // Output information about exceptions
+        Console.WriteLine($"{kptncookRecipes.Count - exceptions.Count} of {kptncookRecipes.Count} recipes where successfully syncronised.");
+        if (exceptions.Count > 0)
+        {
+            List<string> fileText = new List<string>();
+            exceptions.ForEach(exception =>
+            {
+                fileText.Add(exception.ToString());
+                fileText.Add("");
+            }
+            );
+            string fileName = DateTime.Now.ToString("yyyyMMdd\\_hmmtt") + "_exceptions.txt";
+            await File.WriteAllLinesAsync(fileName, fileText);
+            Console.WriteLine($"The exceptions where save to {fileName}.");
+        }
+    }
+
+    // Helper functions to improve readability of the code.
     private static async Task<Exception?> importRecipe(Root recipe, 
         TandorCommunicationService tandorCommunicationService, 
         KptnCookCommunicationService kptnCookCommunicationService,
