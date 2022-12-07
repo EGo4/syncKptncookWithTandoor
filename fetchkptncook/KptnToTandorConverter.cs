@@ -128,6 +128,8 @@ public class KptnToTandorConverter
         // Therefore loop trough all the steps.
         foreach(Step step in recipeSteps)
         {   // Within a step iterate trough all the ingredients
+            if (step.ingredients is null)
+                continue;
             foreach(Ingredient ingredient in step.ingredients)
             {
                 
@@ -164,39 +166,23 @@ public class KptnToTandorConverter
         List<Ingredient> ingredientsToAdd = new List<Ingredient>();
         foreach (Ingredient ingredient in recipeIngredients)
         {
-            Ingredient currentIngredientFromSteps = ingredientsInSteps.Find(ing => ing.title == ingredient.title) ?? new Ingredient();
-            if (currentIngredientFromSteps.unit == ingredient.unit)
+            Ingredient? currentIngredientFromSteps = ingredientsInSteps.Find(ing => ing.title == ingredient.ingredient.title);
+
+            if (currentIngredientFromSteps is null || currentIngredientFromSteps.unit is null || ingredient.metricQuantity is null)
+                continue;
+
+            if (ingredient.metricQuantity > currentIngredientFromSteps.unit.metricQuantity)
             {
-                if (ingredient.unit is not null)
-                {
-                    if (ingredient.unit.metricQuantity != currentIngredientFromSteps.unit.metricQuantity)
-                    {
-                        currentIngredientFromSteps.unit.metricQuantity =
-                            ingredient.unit.metricQuantity
-                            - currentIngredientFromSteps.unit.metricQuantity;
-                        ingredientsToAdd.Add(currentIngredientFromSteps);
-                    }
-                }
-                else if (ingredient.quantity is not null && ingredient.metricQuantity is not null)
-                {
-                    if (ingredient.metricQuantity != currentIngredientFromSteps.metricQuantity)
-                    {
-                        currentIngredientFromSteps.metricQuantity =
-                            ingredient.metricQuantity
-                            - currentIngredientFromSteps.metricQuantity;
-                        ingredientsToAdd.Add(currentIngredientFromSteps);
-                    }
-                }
-            }
-            else
-            {
-                Console.WriteLine("Big oof, one of the recipes is really poorly defined " +
-                    "and cannot be merged correctly.");
+                currentIngredientFromSteps.unit.metricQuantity = (ingredient.metricQuantity ?? 0)
+                    - currentIngredientFromSteps.unit.metricQuantity;
+                ingredientsToAdd.Add(currentIngredientFromSteps);
             }
         }
 
         if (ingredientsToAdd.Count > 0)
         {
+            if (stepToModify.ingredients is null)
+                stepToModify.ingredients = new List<Ingredient>();
             ingredientsToAdd.ForEach(ing => stepToModify.ingredients.Add(ing));
             return kptnStepToTandorStep(stepToModify, stepOrder);
         }

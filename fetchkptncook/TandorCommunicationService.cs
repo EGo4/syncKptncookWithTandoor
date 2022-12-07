@@ -79,11 +79,11 @@ namespace fetchkptncook
             return recipes;
         }
 
-        public List<int> getDeletableRecipeIds(List<Recipe> tandorRecipes, List<Root> recipes, string identificationString, string kptnCookEmail)
+        public List<Recipe> getDeletableRecipeIds(List<Recipe> tandorRecipes, List<Root> recipes, string identificationString, string kptnCookEmail)
         {
             List<int> ids = tandorRecipes.Select(recipe => recipe.Id).ToList();
             List<string> sourceUrls = tandorRecipes.Select(recipe => recipe.SourceUrl).ToList();
-            List<int> idsToDelete = new List<int>();
+            List<Recipe> recipesToDelete = new List<Recipe>();
             int i = 0;
             while (i < ids.Count())
             {
@@ -101,19 +101,25 @@ namespace fetchkptncook
                         && string.Compare(splittedUrl[0], identificationString, StringComparison.Ordinal) == 0
                         && string.Compare(splittedUrl[1], kptnCookEmail, StringComparison.Ordinal) == 0
                         && !recipes.Any(recipe => recipe.title.Contains(tandorRecipes[i].Name)))
-                    idsToDelete.Add(ids[i]);
+                    recipesToDelete.Add(tandorRecipes[i]);
 
                 ++i;
             }
 
-            return idsToDelete;
+            return recipesToDelete;
         }
 
-        public void deleteRecipesBasedOnId(List<int> idsToDelete)
+        public void deleteRecipes(List<Recipe> recipesToDelete)
         {
             ApiApi tandorApi = getTandorApi();
             List<Task> tasks = new List<Task>();
-            idsToDelete.ForEach(async id => await tandorApi.DestroyRecipeAsync(id.ToString()));
+            foreach(Recipe recipe in recipesToDelete)
+            {
+                foreach(RecipeStepsInner step in recipe.Steps) 
+                    tasks.Add(tandorApi.DestroyUserFileAsync(step.File.Id.ToString()));
+
+                tasks.Add(tandorApi.DestroyRecipeAsync(recipe.Id.ToString()));
+            }
             Task.WaitAll(tasks.ToArray());
         }
 

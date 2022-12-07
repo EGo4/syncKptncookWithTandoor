@@ -17,6 +17,7 @@ using System;
 using System.Text.RegularExpressions;
 using NPOI.HPSF;
 using System.Security.Policy;
+using Polly.Caching;
 
 internal class Program
 {
@@ -26,70 +27,166 @@ internal class Program
         const string identifier = "KptnCook";
         const int maximumTandorThreads = 10;
 
-        // User input
-        (string kptnUsername, string kptnPassword, string tandorUrl, string tandorUser, string tandorPassword, bool uploadKeywords, 
-            bool deleteRecipes) = getUserInput();
+        // Declare the variables that will be used
+        string kptnUsername;
+        string kptnPassword;
+        string tandorUrl;
+        string tandorUser;
+        string tandorPassword;
+        bool uploadKeywords;
+        bool deleteRecipes;
+        TandorCommunicationService tandorCommunicationService;
+        KptnCookCommunicationService kptnCookCommunicationService;
 
-        // Login to Apis
-        (TandorCommunicationService tandorCommunicationService, KptnCookCommunicationService kptnCookCommunicationService) = 
-            await loginToServices(kptnUsername, kptnPassword, tandorUrl, tandorUser, tandorPassword);
+        // Ask the user what they want to do
+        int mode = requestModeFromUser();
 
-        // Get all the recipes from KptnCook
-        (List<Root> kptncookRecipes, List<RecipeOverview> currentTandorRecipes)  = await fetchRecipesFromServices(kptnCookCommunicationService,
-            tandorCommunicationService);
+        switch (mode)
+        {
+            case 0:
+                string identifierToDelete;
+                (tandorUrl, tandorUser, tandorPassword) = getUserInputTandor();
+                tandorCommunicationService = await loginToTandorService(tandorUrl, tandorUser, tandorPassword);
+                Console.WriteLine("Recipes with which identifier do you want to delete?");
+                Console.WriteLine("1 : Every recipe that was imported by KptnCook");
+                Console.WriteLine("2 : Only the recipes that where import by a specific KptnCook account");
+                switch (Console.ReadLine() ?? "")
+                {
+                    case "1":
+                        identifierToDelete = "KptnCook";
+                        break;
+                    case "2":
+                        Console.WriteLine("Enter the full email of the KptnCook account which recipes you want to delete.");
+                        identifierToDelete = Console.ReadLine() ?? "";
+                        break;
+                    default:
+                        Console.WriteLine("No valid identifier specified. Programm will exit now.");
+                        return;
+                }
+                await deleteRecipesBasedOnIdentifier(identifierToDelete, tandorCommunicationService, maximumTandorThreads);
+                Console.WriteLine($"Done deleting all recipes with identifier {identifier} from tandor server.");
+                break;
+            case 1:
+                // User input
+                (kptnUsername, kptnPassword) = getUserInputKptnCook();
+                (tandorUrl, tandorUser, tandorPassword) = getUserInputTandor();
+                (uploadKeywords, deleteRecipes) = getUserInputOptions();
 
-        // Check for deleted recipes in kptn cook and delete them in tandor on request.
-        if (deleteRecipes)
-            currentTandorRecipes = await syncDeletedRecipes(tandorCommunicationService, kptncookRecipes, currentTandorRecipes, 
-                maximumTandorThreads, identifier, kptnUsername);
+                // Login to Apis
+                tandorCommunicationService = await loginToTandorService(tandorUrl, tandorUser, tandorPassword);
+                kptnCookCommunicationService = await loginToKptnCookService(kptnUsername, kptnPassword);
 
-        // Process existing recipes
-        kptncookRecipes = deleteExistingRecipes(kptncookRecipes, currentTandorRecipes);
+                // Get all the recipes from KptnCook and Tandor
+                List<Root> kptncookRecipes = await fetchRecipesFromKptnCook(kptnCookCommunicationService);
+                List<RecipeOverview> currentTandorRecipes = await fetchRecipesFromTandor(tandorCommunicationService);
 
-        // Upload new recipes
-        if (kptncookRecipes.Count != 0)
-            await uploadNewRecipes(tandorCommunicationService, kptnCookCommunicationService, kptncookRecipes,
-                uploadKeywords, identifier, kptnUsername);
+                // Check for deleted recipes in kptn cook and delete them in tandor on request.
+                if (deleteRecipes)
+                    currentTandorRecipes = await syncDeletedRecipes(tandorCommunicationService, kptncookRecipes, currentTandorRecipes,
+                        maximumTandorThreads, identifier, kptnUsername);
 
-        Console.WriteLine("Done syncronising KptnCook with Tandor.");
+                // Delete duplicates so that they wont get uploaded again
+                kptncookRecipes = deleteExistingRecipes(kptncookRecipes, currentTandorRecipes);
+
+                // Upload new recipes
+                if (kptncookRecipes.Count != 0)
+                    await uploadNewRecipes(tandorCommunicationService, kptnCookCommunicationService, kptncookRecipes,
+                        uploadKeywords, identifier, kptnUsername);
+
+                Console.WriteLine("Done synchronising KptnCook with Tandor.");
+                break;
+            default:
+                break;
+        }
     }
 
     // General functions to cluster programm tasks.
-    private static (string, string, string, string, string, bool, bool) getUserInput()
+    private static int requestModeFromUser()
+    {
+        Console.WriteLine("What do you want to do?");
+        Console.WriteLine("0 : Delete Tandor recipes with a specific identifier.");
+        Console.WriteLine("1 : [Default] Import recipes from KptnCook to Tandor.");
+        int mode;
+        bool result = int.TryParse(Console.ReadLine(), out mode);
+        return result ? mode : 1;
+    }
+
+    private static async Task deleteRecipesBasedOnIdentifier(string identifier, TandorCommunicationService tandorCommunicationService,
+        int maximumTandorThreads)
+    {
+        List<RecipeOverview> currentTandorRecipes = await fetchRecipesFromTandor(tandorCommunicationService);
+        Console.WriteLine("Check for recipes that can be deleted by comparing Tandor sourceUrls and the specified identifier." +
+            " This only works if your KptnCook recipes in Tandor where imported by this tool!");
+        List<int> ids = currentTandorRecipes.Select(tandorRecipe => tandorRecipe.Id).ToList();
+        List<Recipe> tandorRecipes = await tandorCommunicationService.getTandorRecipes(ids, maximumTandorThreads);
+
+        // Extract the ids of all recipes that contain the given identifier
+        List<Recipe> deletableRecipes = tandorRecipes.FindAll(tandorRecipe => tandorRecipe.SourceUrl.Contains(identifier)).ToList();
+            //.Select(deletableRecipe => deletableRecipe.Id).ToList();
+        Console.WriteLine($"Found {deletableRecipes.Count()} recipes that have the identifier {identifier}. Do you want to delete them (Y/N)?");
+        if (deletableRecipes.Count() > 0 && string.Compare(Console.ReadLine(), "Y") == 0)
+        {
+            Console.WriteLine("Start deleting recipes.");
+            tandorCommunicationService.deleteRecipes(deletableRecipes);
+            Console.WriteLine("Finished deleting recipes.");
+        } else
+        {
+            Console.WriteLine("No recipes where deleted.");
+        }
+    }
+
+    private static (string, string) getUserInputKptnCook()
     {
         // User input
         Console.WriteLine("Enter KptnCook email:");
         string username = Console.ReadLine() ?? "";
-        Console.WriteLine("Enter password:");
+        Console.WriteLine("Enter KptnCook password:");
         string password = Console.ReadLine() ?? "";
+        
+        return (username, password);
+    }
+
+    private static (string, string, string) getUserInputTandor()
+    {
+        // User input
         Console.WriteLine("Enter Tandor server URL:");
         string url = Console.ReadLine() ?? "";
         Console.WriteLine("Enter Tandor username:");
         string tandorUser = Console.ReadLine() ?? "";
         Console.WriteLine("Enter Tandor password:");
         string tandorPassword = Console.ReadLine() ?? "";
+
+        return (url, tandorUser, tandorPassword);
+    }
+
+    private static (bool, bool) getUserInputOptions()
+    {
+        // User input
         Console.WriteLine("Do you want to import keywords from KptnCook (Y/N)");
         bool uploadKeywords = string.Compare(Console.ReadLine(), "Y") == 0 ? true : false;
         Console.WriteLine("Do you want to delete your removed recipes that where added with this account? (CAUTION: THIS DOES NOT DELETE IMAGES) (Y/N)");
         bool deleteRecipes = string.Compare(Console.ReadLine(), "Y") == 0 ? true : false;
 
-        return (username, password, url, tandorUser, tandorPassword, uploadKeywords, deleteRecipes);
+        return (uploadKeywords, deleteRecipes);
     }
 
-    private static async Task<(TandorCommunicationService, KptnCookCommunicationService)> loginToServices(
-        string kptnUsername, string kptnPassword, string tandorUrl, string tandorUser, string tandorPassword)
+    private static async Task<TandorCommunicationService> loginToTandorService(string tandorUrl, string tandorUser, string tandorPassword)
     {
         Console.WriteLine("Login to Tandor.");
         TandorCommunicationService tandorCommunicationService = new TandorCommunicationService(tandorUrl, tandorUser, tandorPassword);
 
+        return tandorCommunicationService;
+    }
+
+    private static async Task<KptnCookCommunicationService> loginToKptnCookService(string kptnUsername, string kptnPassword)
+    {
         Console.WriteLine("Login to KptnCook.");
         KptnCookCommunicationService kptnCookCommunicationService = await KptnCookCommunicationService.BuildService(kptnUsername, kptnPassword);
 
-        return (tandorCommunicationService, kptnCookCommunicationService);
+        return kptnCookCommunicationService;
     }
 
-    private static async Task<(List<Root>, List<RecipeOverview>)> fetchRecipesFromServices(
-        KptnCookCommunicationService kptnCookCommunicationService, TandorCommunicationService tandorCommunicationService)
+    private static async Task<List<Root>> fetchRecipesFromKptnCook(KptnCookCommunicationService kptnCookCommunicationService)
     {
         string[] favorites = kptnCookCommunicationService.favorites ?? new string[0];
         Console.WriteLine("Fetching recipes from KptnCook.");
@@ -100,11 +197,16 @@ internal class Program
         List<Root> kptncookRecipes = (await Task.WhenAll(tasks.ToArray())).ToList();
         Console.WriteLine($"Found {kptncookRecipes.Count()} in your KptnCook account.");
 
+        return kptncookRecipes;
+    }
+
+    private static async Task<List<RecipeOverview>> fetchRecipesFromTandor(TandorCommunicationService tandorCommunicationService)
+    {
         Console.WriteLine("Fetching recipes from Tandor.");
         List<RecipeOverview> currentTandorRecipes = await tandorCommunicationService.getRecipeOverview() ?? new List<RecipeOverview>();
         Console.WriteLine($"Found {currentTandorRecipes.Count()} in your Tandor account.");
 
-        return (kptncookRecipes, currentTandorRecipes);
+        return currentTandorRecipes;
     }
 
     private static async Task<List<RecipeOverview>> syncDeletedRecipes(TandorCommunicationService tandorCommunicationService, List<Root> kptncookRecipes, 
@@ -114,12 +216,12 @@ internal class Program
         List<int> ids = currentTandorRecipes.Select(tandorRecipe => tandorRecipe.Id).ToList();
         List<Recipe> tandorRecipes = await tandorCommunicationService.getTandorRecipes(ids, maximumTandorThreads);
 
-        List<int> deletableIds = tandorCommunicationService.getDeletableRecipeIds(tandorRecipes, kptncookRecipes, identifier, kptnUsername);
-        Console.WriteLine($"Found {deletableIds.Count()} recipes that can be deleted. Do you want to delete them (Y/N)?");
-        if (deletableIds.Count() > 0 && string.Compare(Console.ReadLine(), "Y") == 0)
+        List<Recipe> deletableRecipes = tandorCommunicationService.getDeletableRecipeIds(tandorRecipes, kptncookRecipes, identifier, kptnUsername);
+        Console.WriteLine($"Found {deletableRecipes.Count()} recipes that can be deleted. Do you want to delete them (Y/N)?");
+        if (deletableRecipes.Count() > 0 && string.Compare(Console.ReadLine(), "Y") == 0)
         {
             Console.WriteLine("Start deleting recipes.");
-            tandorCommunicationService.deleteRecipesBasedOnId(deletableIds);
+            tandorCommunicationService.deleteRecipes(deletableRecipes);
             // Fetch recipes again
             Console.WriteLine("Fetch recipes from Tandor again.");
             currentTandorRecipes = await tandorCommunicationService.getRecipeOverview() ?? new List<RecipeOverview>();
