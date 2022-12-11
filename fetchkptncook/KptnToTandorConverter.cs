@@ -49,10 +49,14 @@ public class KptnToTandorConverter
         if (step.ingredients != null)
             foreach (Ingredient ingredient in step.ingredients)
             {
-                recipeStepsInnerIngredientsInners.Add(
-                    kptnIngredientToTandorIngredient(ingredient, orderIng)
-                );
-                orderIng++;
+                if(ingredient.title is not null)
+                {
+                    recipeStepsInnerIngredientsInners.Add(
+                        kptnIngredientToTandorIngredient(ingredient, orderIng)
+                    );
+                    orderIng++;
+                }
+
             }
 
         return new RecipeStepsInner(
@@ -121,7 +125,7 @@ public class KptnToTandorConverter
     }
 
     public RecipeStepsInner? calculateIngredientsCompensationStep(
-        Step stepToModify, List<Step> recipeSteps, List<Ingredient> recipeIngredients, int stepOrder)
+        Step stepToModify, List<Step> recipeSteps, List<Ingredient> recipeIngredients)
     {
         List<Ingredient> ingredientsInSteps = new List<Ingredient>();
         // At first extract all ingredients from the steps.
@@ -139,17 +143,17 @@ public class KptnToTandorConverter
                     Ingredient ingredientToUpdate = ingredientsInSteps.Find(ing => ing.title == ingredient.title) ?? new Ingredient();
                     int indexOfIngredientToUpdate = ingredientsInSteps.IndexOf(ingredientToUpdate);
                     // Modify the ingredient based on the new one
-                    if (ingredientToUpdate.unit == ingredient.unit)
+                    if (ingredientToUpdate.unit is null || ingredient.unit is null ||
+                        ingredientToUpdate.unit.measure == ingredient.unit.measure)
                     {
-                        if (ingredient.unit is not null)
+                        if (ingredient.unit is not null && ingredientToUpdate.unit is not null)
                             ingredientToUpdate.unit.metricQuantity += ingredient.unit.metricQuantity;
                         else if (ingredient.quantity is not null && ingredient.metricQuantity is not null)
                             ingredientToUpdate.metricQuantity += ingredient.metricQuantity;
                     }
                     else
                     {
-                        Console.WriteLine("Big oof, one of the recipes is really poorly defined " +
-                            "and cannot be merged correctly.");
+                        Console.WriteLine($"Poor ingredient definition in step with description {step.title}.");
                     }
 
                     // Update the ingredient
@@ -166,12 +170,13 @@ public class KptnToTandorConverter
         List<Ingredient> ingredientsToAdd = new List<Ingredient>();
         foreach (Ingredient ingredient in recipeIngredients)
         {
-            Ingredient? currentIngredientFromSteps = ingredientsInSteps.Find(ing => ing.title == ingredient.ingredient.title);
+            Ingredient? currentIngredientFromSteps = ingredientsInSteps.Find(ing => ing.numberTitle.singular == ingredient.ingredient.title);
 
             if (currentIngredientFromSteps is null || currentIngredientFromSteps.unit is null || ingredient.metricQuantity is null)
                 continue;
 
-            if (ingredient.metricQuantity > currentIngredientFromSteps.unit.metricQuantity)
+            if (ingredient.metricMeasure == currentIngredientFromSteps.unit.metricMeasure &&
+                ingredient.metricQuantity > currentIngredientFromSteps.unit.metricQuantity)
             {
                 currentIngredientFromSteps.unit.metricQuantity = (ingredient.metricQuantity ?? 0)
                     - currentIngredientFromSteps.unit.metricQuantity;
@@ -184,7 +189,7 @@ public class KptnToTandorConverter
             if (stepToModify.ingredients is null)
                 stepToModify.ingredients = new List<Ingredient>();
             ingredientsToAdd.ForEach(ing => stepToModify.ingredients.Add(ing));
-            return kptnStepToTandorStep(stepToModify, stepOrder);
+            return kptnStepToTandorStep(stepToModify, 0);
         }
         else
         {

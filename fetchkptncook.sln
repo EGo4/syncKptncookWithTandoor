@@ -5,6 +5,8 @@ VisualStudioVersion = 17.3.32825.248
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "fetchkptncook", "fetchkptncook\fetchkptncook.csproj", "{FE370376-D4A2-4582-BCF6-0B8944195AC1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest_fetchkptncook", "UnitTest_fetchkptncook\UnitTest_fetchkptncook.csproj", "{D777AD89-1223-438C-A869-06A3CAD667FA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{FE370376-D4A2-4582-BCF6-0B8944195AC1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FE370376-D4A2-4582-BCF6-0B8944195AC1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FE370376-D4A2-4582-BCF6-0B8944195AC1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D777AD89-1223-438C-A869-06A3CAD667FA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D777AD89-1223-438C-A869-06A3CAD667FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D777AD89-1223-438C-A869-06A3CAD667FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D777AD89-1223-438C-A869-06A3CAD667FA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

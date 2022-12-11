@@ -164,7 +164,7 @@ internal class Program
         // User input
         Console.WriteLine("Do you want to import keywords from KptnCook (Y/N)");
         bool uploadKeywords = string.Compare(Console.ReadLine(), "Y") == 0 ? true : false;
-        Console.WriteLine("Do you want to delete your removed recipes that where added with this account? (CAUTION: THIS DOES NOT DELETE IMAGES) (Y/N)");
+        Console.WriteLine("Do you want to delete your removed recipes that where added with this account? (Y/N)");
         bool deleteRecipes = string.Compare(Console.ReadLine(), "Y") == 0 ? true : false;
 
         return (uploadKeywords, deleteRecipes);
@@ -253,10 +253,25 @@ internal class Program
 
         // Importing all the fetched recipes
         List<Task<Exception?>> uploadTasks = new List<Task<Exception?>>();
-        kptncookRecipes.ForEach(recipe => uploadTasks.Add(importRecipe(recipe,
-            tandorCommunicationService, kptnCookCommunicationService,
-            uploadKeywords, identifier, kptnUsername)));
-        List<Exception?> uploadFeedback = (await Task.WhenAll(uploadTasks.ToArray())).ToList();
+        List<Exception?> uploadFeedback = new List<Exception?>();
+        int openThreads = 0;
+        // Tandor doesn't like parrallel recipe upload. I had some errors when this is set to higher than 1.
+        // Feel free to increase it if you want more speed. But dont complain about error if you do so.
+        const int maximumOpenThreads = 1;
+        foreach(Root recipe in kptncookRecipes)
+        {
+            uploadTasks.Add(importRecipe(recipe,
+                        tandorCommunicationService, kptnCookCommunicationService,
+                        uploadKeywords, identifier, kptnUsername));
+            openThreads++;
+
+            if (openThreads >= maximumOpenThreads)
+            {
+                (await Task.WhenAll(uploadTasks.ToArray())).ToList().ForEach(except => uploadFeedback.Add(except));            
+                uploadTasks.Clear();
+                openThreads = 0;
+            }
+        }
 
         // Extracting exceptions
         List<(Exception, int)> exceptions = new List<(Exception, int)>();
@@ -294,13 +309,13 @@ internal class Program
             // Create the recipe based on the kptn cook recipe
             Recipe tandorRecipe = converter.kptnRecipeToTandorRecipeWithoutSteps(recipe, uploadKeywords, identifier, kptncookUser);
             // Add steps to the recipe
-            int iOrder = 1;
+            int iOrder = 0;
             foreach (Step thisStep in recipe.steps)
             {
                 // Convert KptnCook step to Tandor step
                 RecipeStepsInner stepToAdd = converter.kptnStepToTandorStep(thisStep, iOrder);
                 // Get the image from KptnCook
-                FileStream imgData = await kptnCookCommunicationService.getImage(thisStep.image.url); 
+                FileStream imgData = await kptnCookCommunicationService.getImage(thisStep.image.url);
                 // Upload image to Tandor
                 UserFile imgResponse = await tandorCommunicationService.uploadImage(imgData);
                 imgData.Close();
@@ -314,9 +329,9 @@ internal class Program
             // them from each other and tandor only uses ingredients in steps and calculates the overall
             // ingredients based on that.
             RecipeStepsInner? ingredientStep = converter.calculateIngredientsCompensationStep(
-                recipe.steps.First(), recipe.steps, recipe.ingredients, 0);
+                recipe.steps.First(), recipe.steps, recipe.ingredients);
             if (ingredientStep is not null)
-                tandorRecipe.Steps = tandorRecipe.Steps.Prepend(ingredientStep).ToList();
+                tandorRecipe.Steps[0].Ingredients = ingredientStep.Ingredients;
             // Upload the fully coverted recipe to tandor
             Recipe responseTandor = await tandorCommunicationService.uploadRecipe(tandorRecipe);
             // Get the cover image from kptn cook recipe
@@ -329,6 +344,9 @@ internal class Program
                 RecipeImage recipeImage = await tandorCommunicationService.uploadCoverImage(
                     responseTandor.Id.ToString(), coverImgData);
                 coverImgData.Close();
+            } else
+            {
+                Console.WriteLine($"No cover image found in {recipe.title}.");
             }
 
             return null;

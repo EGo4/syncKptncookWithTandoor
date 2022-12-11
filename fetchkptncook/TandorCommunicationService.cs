@@ -5,6 +5,7 @@ using NPOI.POIFS.Crypt.Dsig;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -112,15 +113,39 @@ namespace fetchkptncook
         public void deleteRecipes(List<Recipe> recipesToDelete)
         {
             ApiApi tandorApi = getTandorApi();
+            List<int> imageIdsToDelete = new List<int>();
+            List<int> ingredientIdsToDelete = new List<int>();
+            List<int> stepIdsToDelete = new List<int>();
             List<Task> tasks = new List<Task>();
             foreach(Recipe recipe in recipesToDelete)
             {
-                foreach(RecipeStepsInner step in recipe.Steps) 
-                    tasks.Add(tandorApi.DestroyUserFileAsync(step.File.Id.ToString()));
-
-                tasks.Add(tandorApi.DestroyRecipeAsync(recipe.Id.ToString()));
-            }
+                foreach(RecipeStepsInner step in recipe.Steps)
+                {
+                    if (!stepIdsToDelete.Any(id => id == step.Id))
+                        stepIdsToDelete.Add(step.Id);
+                    foreach(RecipeStepsInnerIngredientsInner ingredient in step.Ingredients)
+                        if(!ingredientIdsToDelete.Any(id => id == ingredient.Id))
+                            ingredientIdsToDelete.Add(ingredient.Id);
+                    if(step.File is not null && !imageIdsToDelete.Any(id => id == step.File.Id))
+                        imageIdsToDelete.Add(step.File.Id);
+                }
+            }            
+            // Delete ingredients
+            ingredientIdsToDelete.ForEach(id => tasks.Add(tandorApi.DestroyIngredientAsync(id.ToString())));
             Task.WaitAll(tasks.ToArray());
+            tasks.Clear();
+            // Delete steps
+            stepIdsToDelete.ForEach(id => tasks.Add(tandorApi.DestroyStepAsync(id.ToString())));
+            Task.WaitAll(tasks.ToArray());
+            tasks.Clear();
+            // Delete recipes
+            recipesToDelete.ForEach(recipe => tasks.Add(tandorApi.DestroyRecipeAsync(recipe.Id.ToString())));
+            Task.WaitAll(tasks.ToArray());
+            tasks.Clear();
+            // Delete user files
+            imageIdsToDelete.ForEach(id => tasks.Add(tandorApi.DestroyUserFileAsync(id.ToString())));
+            Task.WaitAll(tasks.ToArray());
+            tasks.Clear();
         }
 
         public async Task<List<RecipeOverview>> getRecipeOverview()
@@ -151,7 +176,18 @@ namespace fetchkptncook
         {
             ApiApi api = getTandorApi();
             string[] imgName = System.IO.Path.GetFileName(imgData.Name).Split('.');
-            return await api.CreateUserFileAsync(imgName[0], imgData);
+            UserFile? imgResponse = null;
+            while(imgResponse is null)
+                try
+                {
+                    imgResponse = await api.CreateUserFileAsync(imgName[0], imgData);
+                }
+                catch(Exception ex)
+                {
+                    imgResponse = null;
+                }
+                    
+            return imgResponse ?? new UserFile();
         }
 
         public async Task<RecipeImage> uploadCoverImage(string id, FileStream imgData)
